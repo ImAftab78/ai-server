@@ -1,26 +1,29 @@
 from flask import Flask, request, jsonify
 import requests
 import os
+import json
+import random
 
 app = Flask(__name__)
 
-# 🔐 API key from environment (Render)
+# 🔐 API key (Render environment variable)
 API_KEY = os.environ.get("API_KEY")
 
 @app.route("/ask", methods=["POST"])
 def ask():
-    prompt = request.json.get("prompt")
+    prompt = request.json.get("prompt", "")
 
-    # 🔥 Strong system prompt
     system_prompt = """
 You are a Roblox builder AI.
 
-You MUST always return at least 5 objects.
-DO NOT return empty objects list.
+You MUST ALWAYS return at least 5 objects.
+NEVER return an empty list.
 
 ONLY return valid JSON. NO extra text.
 
-Format:
+Allowed types: tree, rock
+
+Example format:
 {
  "objects":[
   {"type":"tree","position":[0,0,0]},
@@ -40,8 +43,8 @@ Format:
                 "Content-Type": "application/json"
             },
             json={
-                # 🔥 Better free model
-                "model": "openchat/openchat-3.5",
+                # 🔥 stable free model
+                "model": "mistralai/mistral-7b-instruct",
                 "messages": [
                     {"role": "user", "content": system_prompt + "\nUser request: " + prompt}
                 ]
@@ -49,18 +52,52 @@ Format:
         )
 
         data = response.json()
-
-        # 🔍 Debug (optional)
         print("RAW API RESPONSE:", data)
 
         reply = data["choices"][0]["message"]["content"]
+
+        # 🧠 Try parsing AI JSON
+        try:
+            parsed = json.loads(reply)
+
+            # 🔴 If AI still returns empty → force fallback
+            if not parsed.get("objects"):
+                raise ValueError("Empty objects")
+
+        except:
+            print("⚠️ Using fallback objects")
+
+            # 🔥 fallback objects (guaranteed spawn)
+            fallback = {
+                "objects": []
+            }
+
+            for i in range(5):
+                fallback["objects"].append({
+                    "type": random.choice(["tree", "rock"]),
+                    "position": [
+                        random.randint(-20, 20),
+                        0,
+                        random.randint(-20, 20)
+                    ]
+                })
+
+            reply = json.dumps(fallback)
 
         return jsonify({"reply": reply})
 
     except Exception as e:
         print("ERROR:", e)
+
+        # 🔥 emergency fallback
         return jsonify({
-            "reply": '{"objects":[{"type":"tree","position":[0,0,0]}]}'
+            "reply": json.dumps({
+                "objects": [
+                    {"type": "tree", "position": [0, 0, 0]},
+                    {"type": "rock", "position": [5, 0, 5]},
+                    {"type": "tree", "position": [-5, 0, 3]}
+                ]
+            })
         })
 
 if __name__ == "__main__":
