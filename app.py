@@ -6,7 +6,6 @@ import random
 
 app = Flask(__name__)
 
-# 🔐 API key (Render environment variable)
 API_KEY = os.environ.get("API_KEY")
 
 @app.route("/ask", methods=["POST"])
@@ -14,23 +13,20 @@ def ask():
     prompt = request.json.get("prompt", "")
 
     system_prompt = """
-You are a Roblox builder AI.
+You are a Roblox AI builder.
 
-You MUST ALWAYS return at least 5 objects.
-NEVER return an empty list.
+Convert user input into actions.
 
-ONLY return valid JSON. NO extra text.
+You MUST always return valid JSON.
+NEVER return empty actions.
 
-Allowed types: tree, rock
-
-Example format:
+Format:
 {
- "objects":[
-  {"type":"tree","position":[0,0,0]},
-  {"type":"tree","position":[5,0,5]},
-  {"type":"rock","position":[-5,0,3]},
-  {"type":"tree","position":[2,0,-4]},
-  {"type":"rock","position":[7,0,1]}
+ "actions":[
+  {"type":"spawn","object":"tree","position":[0,0,0]},
+  {"type":"spawn","object":"rock","position":[5,0,5]},
+  {"type":"delete","object":"rock"},
+  {"type":"modify","object":"tree","size":8}
  ]
 }
 """
@@ -43,59 +39,47 @@ Example format:
                 "Content-Type": "application/json"
             },
             json={
-                # 🔥 stable free model
                 "model": "mistralai/mistral-7b-instruct",
                 "messages": [
-                    {"role": "user", "content": system_prompt + "\nUser request: " + prompt}
+                    {"role": "user", "content": system_prompt + "\nUser: " + prompt}
                 ]
             }
         )
 
         data = response.json()
-        print("RAW API RESPONSE:", data)
-
         reply = data["choices"][0]["message"]["content"]
 
-        # 🧠 Try parsing AI JSON
+        print("AI RAW:", reply)
+
         try:
             parsed = json.loads(reply)
-
-            # 🔴 If AI still returns empty → force fallback
-            if not parsed.get("objects"):
-                raise ValueError("Empty objects")
-
+            if not parsed.get("actions"):
+                raise ValueError("Empty actions")
         except:
-            print("⚠️ Using fallback objects")
+            print("⚠️ Using fallback")
 
-            # 🔥 fallback objects (guaranteed spawn)
-            fallback = {
-                "objects": []
+            parsed = {
+                "actions": []
             }
 
             for i in range(5):
-                fallback["objects"].append({
-                    "type": random.choice(["tree", "rock"]),
-                    "position": [
-                        random.randint(-20, 20),
-                        0,
-                        random.randint(-20, 20)
-                    ]
+                parsed["actions"].append({
+                    "type": "spawn",
+                    "object": random.choice(["tree", "rock"]),
+                    "position": [random.randint(-20,20), 0, random.randint(-20,20)]
                 })
 
-            reply = json.dumps(fallback)
+            reply = json.dumps(parsed)
 
         return jsonify({"reply": reply})
 
     except Exception as e:
         print("ERROR:", e)
 
-        # 🔥 emergency fallback
         return jsonify({
             "reply": json.dumps({
-                "objects": [
-                    {"type": "tree", "position": [0, 0, 0]},
-                    {"type": "rock", "position": [5, 0, 5]},
-                    {"type": "tree", "position": [-5, 0, 3]}
+                "actions":[
+                    {"type":"spawn","object":"tree","position":[0,0,0]}
                 ]
             })
         })
